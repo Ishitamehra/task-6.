@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+
 import {
   getFirestore,
   collection,
@@ -61,6 +62,10 @@ const Todo = ({ user }) => {
 
     const sourceList = result.source.droppableId;
     const destinationList = result.destination.droppableId;
+    const taskToMove =
+      sourceList === "active"
+        ? activeTasks[result.source.index]
+        : completedTasks[result.source.index];
 
     if (sourceList === destinationList) {
       // Reordering within the same list
@@ -75,44 +80,30 @@ const Todo = ({ user }) => {
         : setCompletedTasks(updatedTasks);
     } else {
       // Moving between lists
-      const taskToMove =
-        result.source.droppableId === "active"
-          ? activeTasks[result.source.index]
-          : completedTasks[result.source.index];
+      const updatedActiveTasks = [...activeTasks];
+      const updatedCompletedTasks = [...completedTasks];
+      const updatedTask = {
+        ...taskToMove,
+        completed: destinationList === "completed",
+      };
 
-      // Remove task from source list
-      const updatedSourceList =
-        result.source.droppableId === "active"
-          ? removeTask(activeTasks, result.source.index)
-          : removeTask(completedTasks, result.source.index);
+      // Remove task from the source list
+      updatedActiveTasks.splice(result.source.index, 1);
+      updatedCompletedTasks.splice(result.destination.index, 0, updatedTask);
 
-      // Add task to destination list
-      const updatedDestinationList =
-        destinationList === "active"
-          ? insertTask(activeTasks, taskToMove, result.destination.index)
-          : insertTask(completedTasks, taskToMove, result.destination.index);
+      setActiveTasks(updatedActiveTasks);
+      setCompletedTasks(updatedCompletedTasks);
 
-      /*const updatedTodos = [...todos];
-          const [removed] = updatedTodos.splice(result.source.index, 1);
-          updatedTodos.splice(result.destination.index, 0, removed);*/
-
-      setActiveTasks(updatedSourceList);
-      setCompletedTasks(updatedDestinationList);
-    }
-
-    // Update Firebase with the new order
-    const batch = [];
-    [...activeTasks, ...completedTasks].forEach((task, index) => {
-      batch.push(updateDoc(doc(db, "todos", task.id), { order: index }));
-    });
-
-    try {
-      await writeBatch(batch);
-    } catch (error) {
-      console.error("Error updating task order:", error.message);
+      // Update Firebase with the new status (completed or active)
+      try {
+        await updateDoc(doc(db, "todos", taskToMove.id), {
+          completed: destinationList === "completed",
+        });
+      } catch (error) {
+        console.error("Error updating task status:", error.message);
+      }
     }
   };
-
   const handlePriorityChange = async (taskId, newPriority) => {
     const updatedTasks = [...activeTasks, ...completedTasks].map((task) =>
       task.id === taskId ? { ...task, priority: newPriority } : task,
@@ -194,7 +185,7 @@ const Todo = ({ user }) => {
       <button type="button" onClick={handleAddTodo}>
         Add Task
       </button>
-
+      <br />
       <h2>Active</h2>
       <DragDropContext onDragEnd={handleDragEnd}>
         <div style={{ display: "flex" }}>
